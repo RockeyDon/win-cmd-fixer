@@ -21,6 +21,7 @@ cmd = fix_cmd('cd D:\my projects')
 | Issue                 | Example              | Fixed                  |
 |-----------------------|----------------------|------------------------|
 | **Paths with spaces** | dir C:\Program Files | dir "C:\Program Files" |
+| **Cross-drive `cd`**  | cd D:\folder         | cd /d D:\folder        |
 
 ## Contributing
 Contributions are welcome! Especially:

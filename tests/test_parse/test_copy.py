@@ -5,53 +5,42 @@ test_cases = [
     {
         'input': 'copy D:\\Program Files\\file.txt C:\\Program Files',
         'expected': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files"'
-    },  # todo
-    {
-        'input': 'type "D:\\Program Files\\file.txt"',
-        'expected': 'type "D:\\Program Files\\file.txt"'
     },
     {
-        'input': 'TYPE "D:\\Program Files\\file.txt"',
-        'expected': 'type "D:\\Program Files\\file.txt"'
+        'input': 'copy "D:\\Program Files\\file.txt" C:\\Program Files',
+        'expected': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files"'
+    },
+    {
+        'input': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files"',
+        'expected': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files"'
+    },
+    {
+        'input': 'copy D:\\Program Files\\file.txt "C:\\Program Files"',
+        'expected': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files"'
+    },
+    {
+        'input': 'COPY "D:\\Program Files\\file.txt" "C:\\Program Files"',
+        'expected': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files"'
     },
     # multi file
     {
-        'input': 'type D:\\Program Files\\file.txt C:\\Program Files\\file.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"'
+        'input': 'copy D:\\Program Files\\file.txt C:\\Program Files\\file.txt "E:\\Program Files"',
+        'expected': 'copy "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt" "E:\\Program Files"'
     },
+    # options
     {
-        'input': 'type "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"',
-        'expected': 'type "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"'
+        'input': 'copy /A D:\\Program Files\\file.txt /A C:\\Program Files\\file.txt /A "E:\\Program Files" /A',
+        'expected': 'copy /A "D:\\Program Files\\file.txt" /A "C:\\Program Files\\file.txt" /A "E:\\Program Files" /A'
     },
-    # combine
+    # concat
     {
-        'input': 'type D:\\Program Files\\file.txt & type C:\\Program Files\\file.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" & type "C:\\Program Files\\file.txt"'
-    },
-    {
-        'input': 'type D:\\Program Files\\file.txt && type C:\\Program Files\\file.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" && type "C:\\Program Files\\file.txt"'
-    },
-    {
-        'input': 'type D:\\Program Files\\file.txt || type C:\\Program Files\\file.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" || type "C:\\Program Files\\file.txt"'
-    },
-    {
-        'input': 'type D:\\Program Files\\file.txt > results.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" > results.txt'
-    },
-    {
-        'input': 'type D:\\Program Files\\file.txt >> results.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" >> results.txt'
-    },
-    {
-        'input': 'type D:\\Program Files\\file.txt | type C:\\Program Files\\file.txt > results.txt',
-        'expected': 'type "D:\\Program Files\\file.txt" | type "C:\\Program Files\\file.txt" > results.txt'
+        'input': 'copy D:\\Program Files\\file.txt + C:\\Program Files\\file.txt "E:\\Program Files"',
+        'expected': 'copy "D:\\Program Files\\file.txt" + "C:\\Program Files\\file.txt" "E:\\Program Files"'
     },
 ]
 
 
-def test_parse_type():
+def test_parse_copy():
     for ind, case in enumerate(test_cases, start=1):
         result = fix_cmd(case['input'])
         expected = case.get('expected_advanced', case.get('expected', []))
