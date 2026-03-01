@@ -2,6 +2,7 @@ import typing as tp
 
 
 def split_args(text: str) -> tp.List[str]:
+    """split by space, but keep ones in quotes"""
     result = []
     current = []
     in_quotes = False

@@ -32,6 +32,31 @@ test_cases = [
         'input': 'dir "D:\\Program Files\\" /W',
         'expected': 'dir "D:\\Program Files\\" /W'
     },
+    # combine
+    {
+        'input': 'dir D:\\Program Files\\ & dir C:\\Program Files\\',
+        'expected': 'dir "D:\\Program Files\\" & dir "C:\\Program Files\\"'
+    },
+    {
+        'input': 'dir D:\\Program Files\\ && dir C:\\Program Files\\',
+        'expected': 'dir "D:\\Program Files\\" && dir "C:\\Program Files\\"'
+    },
+    {
+        'input': 'dir D:\\Program Files\\ || dir C:\\Program Files\\',
+        'expected': 'dir "D:\\Program Files\\" || dir "C:\\Program Files\\"'
+    },
+    {
+        'input': 'dir D:\\Program Files\\ > results.txt',
+        'expected': 'dir "D:\\Program Files\\" > results.txt'
+    },
+    {
+        'input': 'dir D:\\Program Files\\ >> results.txt',
+        'expected': 'dir "D:\\Program Files\\" >> results.txt'
+    },
+    {
+        'input': 'dir D:\\Program Files\\ | dir C:\\Program Files\\ > results.txt',
+        'expected': 'dir "D:\\Program Files\\" | dir "C:\\Program Files\\" > results.txt'
+    },
 ]
 
 
