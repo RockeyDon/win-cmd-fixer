@@ -11,7 +11,7 @@ def fix_cmd(text: str) -> str:
         except ValueError:
             output.append(remaining)  # Cannot split anymore
             break
-        if parse_func := get_parse_func(first):
+        if parse_func := get_parse_func(first.lower()):
             first_cmd, remaining = parse_func(others)
             output.append(first_cmd)
         else:

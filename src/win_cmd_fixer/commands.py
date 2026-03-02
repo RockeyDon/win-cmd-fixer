@@ -1,20 +1,30 @@
+import enum
 import re
 import typing as tp
 
 from .args import split_args
 
-# types
-TypeParsed = tp.Tuple[str, str]
-TypFunc = tp.Callable[[str], TypeParsed]
-
 # consts
-_COMMAND_REGISTRY: tp.Dict[str, TypFunc] = {}
+TypParsed = tp.Tuple[str, str]
+TypParseFunc = tp.Callable[[str], TypParsed]
+
+_COMMAND_REGISTRY: tp.Dict[str, TypParseFunc] = {}
 _SEPARATORS = ['&', '&&', '|', '||', '>', '>>', '<']
+_RE_DRIVE = re.compile(r'[A-Z]:\\')
 
 
-def get_parse_func(name: str) -> tp.Optional[TypFunc]:
+class PathState(enum.Enum):
+    START_NEW = 1
+    END_CURRENT = 2
+    CONTINUE = 3
+
+
+TypPathJudge = tp.Literal[PathState.START_NEW, PathState.END_CURRENT, PathState.CONTINUE]
+
+
+def get_parse_func(name: str) -> tp.Optional[TypParseFunc]:
     if name in _SEPARATORS:
-        return parse_separator(name)
+        return _parse_separator(name)
     elif name in _COMMAND_REGISTRY:
         return _COMMAND_REGISTRY[name]
     return None
@@ -31,17 +41,8 @@ def command(names: tp.List[str]):
     return decorator
 
 
-def parse_separator(name: str) -> tp.Optional[TypFunc]:
-    """separators"""
-
-    def inner(text: str):
-        return name, text
-
-    return inner
-
-
-@command(names=['cd', 'CD'])
-def parse_cd(text: str) -> TypeParsed:
+@command(names=['cd'])
+def parse_cd(text: str) -> TypParsed:
     """
     Change Directory - Select a Folder (and drive)
 
@@ -49,39 +50,22 @@ def parse_cd(text: str) -> TypeParsed:
       CD [/D] [drive:][path]
       CD [../..]
     """
-    assert text
-    parts = split_args(text)
-    args = []
-    in_pathname = False
-    contain_tail = True
-    i = 0
-    for i, p in enumerate(parts):
-        if p in _SEPARATORS:
-            contain_tail = False
-            break
-        elif not in_pathname and not p.startswith('/'):
-            in_pathname = True
-            args.append(p)
-        elif in_pathname and not p.startswith('/'):
-            args[-1] += f' {p}'
-        elif in_pathname:  # and p.startswith('/')
-            in_pathname = False
-            args[-1] = f'"{args[-1]}"'
-            # args.append(p)  # not append /d
-        elif p in _COMMAND_REGISTRY:
-            contain_tail = False
-            break
-        else:
-            pass  # not append /d
-    if in_pathname:  # last pathname
-        args[-1] = f'"{args[-1]}"'
 
-    remaining = parts[i + 1:] if contain_tail else parts[i:]
-    return f'cd /d {" ".join(args)}', " ".join(remaining)
+    def path_judge(p: str) -> PathState:
+        if p.startswith('/'):
+            return PathState.END_CURRENT
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    if '/d' in args:
+        args.remove('/d')
+    return f'cd /d {" ".join(args)}', remaining
 
 
-@command(names=['copy', 'COPY'])
-def parse_copy(text: str) -> TypeParsed:
+@command(names=['copy'])
+def parse_copy(text: str) -> TypParsed:
     """
     Copy one or more files to another location.
 
@@ -90,88 +74,62 @@ def parse_copy(text: str) -> TypeParsed:
 
       COPY source1 + source2 destination [options]
     """
-    assert text
-    re_drive = re.compile(r'[A-Z]:\\')
-    parts = split_args(text)
-    args = []
-    in_pathname = False
-    contain_tail = True
-    i = 0
-    for i, p in enumerate(parts):
-        out_pathname = p.startswith('/') or p == '+'
-        if p in _SEPARATORS:
-            contain_tail = False  # not contain current p
-            break
-        elif not in_pathname and not out_pathname:  # may not have quote
-            in_pathname = True
-            args.append(p)
-        elif in_pathname and re_drive.search(p):  # next pathname
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif in_pathname and not out_pathname:
-            args[-1] += f' {p}'
-        elif in_pathname:  # and out_pathname
-            in_pathname = False
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif p in _COMMAND_REGISTRY:
-            contain_tail = False
-            break
-        else:
-            args.append(p)
-    if in_pathname:  # last pathname
-        args[-1] = f'"{args[-1]}"'
 
-    remaining = parts[i + 1:] if contain_tail else parts[i:]
-    return f'copy {" ".join(args)}', " ".join(remaining)
+    def path_judge(p: str) -> PathState:
+        if p.startswith('/') or p == '+':
+            return PathState.END_CURRENT
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    return f'copy {" ".join(args)}', remaining
 
 
-@command(names=['del', 'DEL'])
-def parse_del(text: str) -> TypeParsed:
+@command(names=['cp'])
+def parse_cp(text: str) -> TypParsed:
+    """
+    Unix "copy"
+    """
+
+    def path_judge(p: str) -> PathState:
+        if p.startswith('/') or p == '+' or p.startswith('-'):
+            return PathState.END_CURRENT
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    if '-r' in args:
+        cmd_prefix = 'robocopy /e'
+        args.remove('-r')
+    else:
+        cmd_prefix = 'copy'
+    return f'{cmd_prefix} {" ".join(args)}', remaining
+
+
+@command(names=['del'])
+def parse_del(text: str) -> TypParsed:
     """
     Delete one or more files.
 
     Syntax
       DEL [options] [/A:file_attributes] files_to_delete
     """
-    assert text
-    re_drive = re.compile(r'[A-Z]:\\')
-    parts = split_args(text)
-    args = []
-    in_pathname = False
-    contain_tail = True
-    i = 0
-    for i, p in enumerate(parts):
-        out_pathname = p.startswith('/')
-        if p in _SEPARATORS:
-            contain_tail = False  # not contain current p
-            break
-        elif not in_pathname and not out_pathname:  # may not have quote
-            in_pathname = True
-            args.append(p)
-        elif in_pathname and re_drive.search(p):  # next pathname
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif in_pathname and not out_pathname:
-            args[-1] += f' {p}'
-        elif in_pathname:  # and out_pathname
-            in_pathname = False
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif p in _COMMAND_REGISTRY:
-            contain_tail = False
-            break
-        else:
-            args.append(p)
-    if in_pathname:  # last pathname
-        args[-1] = f'"{args[-1]}"'
 
-    remaining = parts[i + 1:] if contain_tail else parts[i:]
-    return f'del {" ".join(args)}', " ".join(remaining)
+    def path_judge(p: str) -> PathState:
+        if p.startswith('/'):
+            return PathState.END_CURRENT
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    return f'del {" ".join(args)}', remaining
 
 
-@command(names=['dir', 'DIR'])
-def parse_dir(text: str) -> TypeParsed:
+@command(names=['dir', 'ls'])
+def parse_dir(text: str) -> TypParsed:
     """
     Display a list of files and subfolders.
 
@@ -179,83 +137,40 @@ def parse_dir(text: str) -> TypeParsed:
       DIR [pathname] [options]
       DIR [options] [pathname]
     """
-    assert text
-    parts = split_args(text)
-    args = []
-    in_pathname = False
-    contain_tail = True
-    i = 0
-    for i, p in enumerate(parts):
-        if p in _SEPARATORS:
-            contain_tail = False  # not contain current p
-            break
-        elif not in_pathname and not p.startswith('/'):  # may not have quote
-            in_pathname = True
-            args.append(p)
-        elif in_pathname and not p.startswith('/'):
-            args[-1] += f' {p}'
-        elif in_pathname:  # and p.startswith('/')
-            in_pathname = False
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif p in _COMMAND_REGISTRY:
-            contain_tail = False
-            break
-        else:
-            args.append(p)
-    if in_pathname:  # last pathname
-        args[-1] = f'"{args[-1]}"'
 
-    remaining = parts[i + 1:] if contain_tail else parts[i:]
-    return f'dir {" ".join(args)}', " ".join(remaining)
+    def path_judge(p: str) -> PathState:
+        if p.startswith('/'):
+            return PathState.END_CURRENT
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    return f'dir {" ".join(args)}', remaining
 
 
-@command(names=['move', 'MOVE'])
-def parse_move(text: str) -> TypeParsed:
+@command(names=['move', 'mv'])
+def parse_move(text: str) -> TypParsed:
     """
     Move a file from one folder to another.
 
     Syntax
       MOVE [options] [Source] [Target]
     """
-    assert text
-    re_drive = re.compile(r'[A-Z]:\\')
-    parts = split_args(text)
-    args = []
-    in_pathname = False
-    contain_tail = True
-    i = 0
-    for i, p in enumerate(parts):
-        out_pathname = p.startswith('/')
-        if p in _SEPARATORS:
-            contain_tail = False  # not contain current p
-            break
-        elif not in_pathname and not out_pathname:  # may not have quote
-            in_pathname = True
-            args.append(p)
-        elif in_pathname and re_drive.search(p):  # next pathname
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif in_pathname and not out_pathname:
-            args[-1] += f' {p}'
-        elif in_pathname:  # and out_pathname
-            in_pathname = False
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif p in _COMMAND_REGISTRY:
-            contain_tail = False
-            break
-        else:
-            args.append(p)
-    if in_pathname:  # last pathname
-        args[-1] = f'"{args[-1]}"'
 
-    remaining = parts[i + 1:] if contain_tail else parts[i:]
-    return f'move {" ".join(args)}', " ".join(remaining)
+    def path_judge(p: str) -> PathState:
+        if p.startswith('/'):
+            return PathState.END_CURRENT
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    return f'move {" ".join(args)}', remaining
 
 
-@command(names=['type', 'TYPE'])
-def parse_type(text: str) -> TypeParsed:
+@command(names=['type', 'cat'])
+def parse_type(text: str) -> TypParsed:
     """
     Display the contents of one or more text files.
 
@@ -263,32 +178,74 @@ def parse_type(text: str) -> TypeParsed:
       TYPE [drive:]pathname
       TYPE [drive:]pathname [drive:]pathname
     """
+
+    def path_judge(p: str) -> PathState:
+        if _RE_DRIVE.search(p):
+            return PathState.START_NEW
+        return PathState.CONTINUE
+
+    args, remaining = _parse_common(text, classify=path_judge)
+    return f'type {" ".join(args)}', remaining
+
+
+def _parse_separator(name: str) -> tp.Optional[TypParseFunc]:
+    """separators"""
+
+    def inner(text: str):
+        return name, text
+
+    return inner
+
+
+def _parse_common(
+        text: str,
+        classify: tp.Callable[[str], TypPathJudge],
+) -> tp.Tuple[tp.List[str], str]:
+    """Shared arg-parsing skeleton used by every registered command.
+
+    Args:
+        text:           raw argument string after the command name.
+        classify:       callback that returns judge path state for a given token.
+    """
     assert text
-    re_drive = re.compile(r'[A-Z]:\\')
     parts = split_args(text)
-    args = []
+    args: tp.List[str] = []
     in_pathname = False
     contain_tail = True
     i = 0
     for i, p in enumerate(parts):
         if p in _SEPARATORS:
-            contain_tail = False  # not contain current p
-            break
-        elif not in_pathname and re_drive.search(p):  # may not have quote
-            in_pathname = True
-            args.append(p)
-        elif in_pathname and not re_drive.search(p):
-            args[-1] += f' {p}'
-        elif in_pathname:  # and re_drive.search(p)
-            args[-1] = f'"{args[-1]}"'
-            args.append(p)
-        elif p in _COMMAND_REGISTRY:
             contain_tail = False
             break
-        else:
+
+        kind = classify(p)
+
+        if not in_pathname and kind == PathState.START_NEW:
+            in_pathname = True
             args.append(p)
-    if in_pathname:  # last pathname
+        elif not in_pathname and kind == PathState.END_CURRENT:
+            if p in _COMMAND_REGISTRY:
+                contain_tail = False
+                break
+            args.append(p)
+        elif not in_pathname and kind == PathState.CONTINUE:
+            if p in _COMMAND_REGISTRY:
+                contain_tail = False
+                break
+            args.append(p)
+        elif in_pathname and kind == PathState.START_NEW:
+            # close current path, start a new one
+            args[-1] = f'"{args[-1]}"'
+            args.append(p)
+        elif in_pathname and kind == PathState.CONTINUE:
+            args[-1] += f' {p}'
+        elif in_pathname and kind == PathState.END_CURRENT:
+            in_pathname = False
+            args[-1] = f'"{args[-1]}"'
+            args.append(p)
+
+    if in_pathname:
         args[-1] = f'"{args[-1]}"'
 
     remaining = parts[i + 1:] if contain_tail else parts[i:]
-    return f'type {" ".join(args)}', " ".join(remaining)
+    return args, " ".join(remaining)
