@@ -1,3 +1,3 @@
-from .parser import fix_cmd
+from .parser import fix_cmd, fix_unix_shell
 
-__all__ = ['fix_cmd']
+__all__ = ['fix_cmd', 'fix_unix_shell']

@@ -6,11 +6,11 @@ from .args import split_args
 
 # consts
 TypParsed = tp.Tuple[str, str]
-TypParseFunc = tp.Callable[[str], TypParsed]
+TypParseFunc = tp.Callable[[str, str], TypParsed]
 
 _COMMAND_REGISTRY: tp.Dict[str, TypParseFunc] = {}
 _SEPARATORS = ['&', '&&', '|', '||', '>', '>>', '<']
-_RE_DRIVE = re.compile(r'[A-Z]:\\')
+_RE_DRIVE = re.compile(r'[A-Za-z]:\\')
 
 
 class PathState(enum.Enum):
@@ -42,7 +42,7 @@ def command(names: tp.List[str]):
 
 
 @command(names=['cd'])
-def parse_cd(text: str) -> TypParsed:
+def parse_cd(text: str, kind: str) -> TypParsed:
     """
     Change Directory - Select a Folder (and drive)
 
@@ -61,11 +61,16 @@ def parse_cd(text: str) -> TypParsed:
     args, remaining = _parse_common(text, classify=path_judge)
     if '/d' in args:
         args.remove('/d')
-    return f'cd /d {" ".join(args)}', remaining
+    if kind == 'cmd':
+        return f'cd /d {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'cd {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 @command(names=['copy'])
-def parse_copy(text: str) -> TypParsed:
+def parse_copy(text: str, kind: str) -> TypParsed:
     """
     Copy one or more files to another location.
 
@@ -83,11 +88,16 @@ def parse_copy(text: str) -> TypParsed:
         return PathState.CONTINUE
 
     args, remaining = _parse_common(text, classify=path_judge)
-    return f'copy {" ".join(args)}', remaining
+    if kind == 'cmd':
+        return f'copy {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'cp {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 @command(names=['cp'])
-def parse_cp(text: str) -> TypParsed:
+def parse_cp(text: str, kind: str) -> TypParsed:
     """
     Unix "copy"
     """
@@ -100,16 +110,21 @@ def parse_cp(text: str) -> TypParsed:
         return PathState.CONTINUE
 
     args, remaining = _parse_common(text, classify=path_judge)
-    if '-r' in args:
-        cmd_prefix = 'robocopy /e'
-        args.remove('-r')
-    else:
-        cmd_prefix = 'copy'
-    return f'{cmd_prefix} {" ".join(args)}', remaining
+    if kind == 'cmd':
+        if '-r' in args:
+            cmd_prefix = 'robocopy /e'
+            args.remove('-r')
+        else:
+            cmd_prefix = 'copy'
+        return f'{cmd_prefix} {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'cp {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 @command(names=['del'])
-def parse_del(text: str) -> TypParsed:
+def parse_del(text: str, kind: str) -> TypParsed:
     """
     Delete one or more files.
 
@@ -125,11 +140,16 @@ def parse_del(text: str) -> TypParsed:
         return PathState.CONTINUE
 
     args, remaining = _parse_common(text, classify=path_judge)
-    return f'del {" ".join(args)}', remaining
+    if kind == 'cmd':
+        return f'del {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'rm {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 @command(names=['dir', 'ls'])
-def parse_dir(text: str) -> TypParsed:
+def parse_dir(text: str, kind: str) -> TypParsed:
     """
     Display a list of files and subfolders.
 
@@ -146,11 +166,16 @@ def parse_dir(text: str) -> TypParsed:
         return PathState.CONTINUE
 
     args, remaining = _parse_common(text, classify=path_judge)
-    return f'dir {" ".join(args)}', remaining
+    if kind == 'cmd':
+        return f'dir {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'ls {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 @command(names=['move', 'mv'])
-def parse_move(text: str) -> TypParsed:
+def parse_move(text: str, kind: str) -> TypParsed:
     """
     Move a file from one folder to another.
 
@@ -166,11 +191,16 @@ def parse_move(text: str) -> TypParsed:
         return PathState.CONTINUE
 
     args, remaining = _parse_common(text, classify=path_judge)
-    return f'move {" ".join(args)}', remaining
+    if kind == 'cmd':
+        return f'move {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'mv {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 @command(names=['type', 'cat'])
-def parse_type(text: str) -> TypParsed:
+def parse_type(text: str, kind: str) -> TypParsed:
     """
     Display the contents of one or more text files.
 
@@ -185,13 +215,18 @@ def parse_type(text: str) -> TypParsed:
         return PathState.CONTINUE
 
     args, remaining = _parse_common(text, classify=path_judge)
-    return f'type {" ".join(args)}', remaining
+    if kind == 'cmd':
+        return f'type {" ".join(args)}', remaining
+    if kind == 'unix':
+        args = [win_path_to_unix(a) for a in args]
+        return f'cat {" ".join(args)}', remaining
+    raise ValueError(f'unknown command kind: {kind}')
 
 
 def _parse_separator(name: str) -> tp.Optional[TypParseFunc]:
     """separators"""
 
-    def inner(text: str):
+    def inner(text: str, kind: str):
         return name, text
 
     return inner
@@ -249,3 +284,12 @@ def _parse_common(
 
     remaining = parts[i + 1:] if contain_tail else parts[i:]
     return args, " ".join(remaining)
+
+
+def win_path_to_unix(arg: str) -> str:
+    if not _RE_DRIVE.search(arg):
+        return arg
+    arg_strip = arg.strip('\"\'')
+    drive = arg_strip[0].lower()
+    unix_path = arg_strip[3:].replace('\\', '/')
+    return f'"/{drive}/{unix_path}"'

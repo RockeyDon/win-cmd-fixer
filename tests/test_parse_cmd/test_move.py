@@ -24,12 +24,12 @@ test_cases = [
     },
     # options
     {
-        'input': 'copy /Y D:\\Program Files\\file.txt C:\\Program Files\\file.txt',
-        'expected': 'copy /Y "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"'
+        'input': 'move /Y D:\\Program Files\\file.txt C:\\Program Files\\file.txt',
+        'expected': 'move /Y "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"'
     },
     {
-        'input': 'copy /-Y D:\\Program Files\\file.txt C:\\Program Files\\file.txt',
-        'expected': 'copy /-Y "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"'
+        'input': 'move /-Y D:\\Program Files\\file.txt C:\\Program Files\\file.txt',
+        'expected': 'move /-Y "D:\\Program Files\\file.txt" "C:\\Program Files\\file.txt"'
     },
 ]
 
